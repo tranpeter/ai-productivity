@@ -1,0 +1,37 @@
+{
+  "name": "ai-productivity",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && esbuild src/client/app.ts --bundle --format=esm --outfile=public/app.js",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.client.json",
+    "test": "tsx --test tests/*.test.ts",
+    "start": "node dist/server/index.js",
+    "dev": "tsx src/server/index.ts",
+    "check:config": "node scripts/check-config.mjs",
+    "format": "prettier --write src tests public scripts",
+    "prebuild": "pnpm run check:config"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "express": "^5.0.0",
+    "luxon": "^3.0.0",
+    "undici": "^7.0.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/express": "^5.0.0",
+    "@types/luxon": "^3.0.0",
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
+    "prettier": "^3.9.6",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "packageManager": "pnpm@9.12.0"
+}

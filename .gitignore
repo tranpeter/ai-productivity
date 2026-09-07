@@ -141,3 +141,13 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Local analytics and generated assets
+.data/
+*.sqlite*
+public/app.js
+test-results/
+playwright-report/
+# Generated and populated MCP profiles stay local
+mcp*.json
+*.local.json

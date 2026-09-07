@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AI productivity</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div id="ap-mock">
+      <header>
+        <span class="ap-logo">a↗</span>
+        <div>
+          <div class="ap-title">ai-productivity</div>
+          <div class="ap-small">Engineering delivery insights</div>
+        </div>
+        <span id="data-label" class="ap-demo">Local · Read-only sources</span>
+      </header>
+      <nav aria-label="Workspace">
+        <button data-page="analysis" aria-pressed="true">Analysis</button
+        ><button data-page="reports">Saved reports</button
+        ><button data-page="connections">Connections & data</button
+        ><button data-page="settings">Reporting settings</button>
+      </nav>
+      <main>
+        <p id="notice" class="ap-status" aria-live="polite"></p>
+        <section id="analysis">
+          <div class="ap-heading">
+            <div>
+              <h2>Delivery analysis</h2>
+              <p class="ap-small">
+                Choose your scope. Compare delivery over time.
+              </p>
+            </div>
+            <button id="demo">Load synthetic example</button>
+          </div>
+          <form id="analysis-form" class="ap-panel">
+            <h3>Sources & period</h3>
+            <div class="ap-fields">
+              <label
+                >Sources<select
+                  id="sources"
+                  class="ap-multi"
+                  multiple
+                  required
+                ></select></label
+              ><label
+                >Jira projects (comma separated)<input
+                  id="projects"
+                  placeholder="All projects from selected sources" /></label
+              ><label
+                >Repositories (comma separated)<input
+                  id="repos"
+                  placeholder="PROJECT/repository"
+              /></label>
+            </div>
+            <div class="ap-sep"></div>
+            <div class="ap-fields">
+              <label
+                >Preset<select id="preset">
+                  <option value="qoq">Quarter-over-quarter</option>
+                  <option value="mom">Month-over-month</option>
+                  <option value="qtd">Quarter-to-date</option>
+                  <option value="mtd">Month-to-date</option>
+                  <option value="yoy">Year-over-year</option>
+                  <option value="custom">Custom window</option>
+                  <option value="adoption">Since adoption</option>
+                </select></label
+              ><label
+                >As of date<input type="date" id="anchor" required /></label
+              ><label
+                >Comparison<select id="comparison">
+                  <option value="previous">Previous period</option>
+                  <option value="none">No comparison</option>
+                  <option value="custom">Custom baseline</option>
+                </select></label
+              >
+            </div>
+            <div class="ap-fields">
+              <label
+                >Analysis start<input
+                  type="date"
+                  id="start"
+                  value="2026-04-01" /></label
+              ><label
+                >Analysis end (inclusive)<input
+                  type="date"
+                  id="end"
+                  value="2026-06-30" /></label
+              ><label>Adoption event<select id="adoption"></select></label
+              ><label
+                >Baseline start<input type="date" id="baseline-start" /></label
+              ><label
+                >Baseline end<input type="date" id="baseline-end"
+              /></label>
+            </div>
+            <div class="ap-status" id="period-preview"></div>
+            <div class="ap-row">
+              <label class="ap-check"
+                ><input type="checkbox" id="linked" />Only linked Jira
+                issues</label
+              ><label class="ap-check"
+                ><input type="checkbox" id="mixed" />Exclude mixed adoption
+                work</label
+              ><button class="ap-primary ap-run" type="submit">
+                Run & save analysis
+              </button>
+            </div>
+          </form>
+          <div id="results"></div>
+        </section>
+        <section id="reports" hidden>
+          <h2>Saved reports</h2>
+          <p class="ap-status">
+            Frozen results and evidence, preserved across source refreshes.
+          </p>
+          <div id="report-list"></div>
+        </section>
+        <section id="connections" hidden>
+          <h2>Connections & data</h2>
+          <p class="ap-status">
+            Settings are stored only in the local ignored database. Use
+            environment-variable references for credentials.
+          </p>
+          <div class="ap-row">
+            <a href="/api/v1/mcp-template" class="ap-link"
+              >Download MCP template</a
+            ><button id="new-source">New connection</button
+            ><label
+              >Import populated MCP template<input
+                type="file"
+                id="mcp-file"
+                accept=".json,application/json"
+            /></label>
+          </div>
+          <div id="connection-list"></div>
+          <form id="source-form" class="ap-panel">
+            <h3 id="source-title">Connection setup</h3>
+            <div class="ap-fields">
+              <label
+                >Connection ID<input
+                  id="source-id"
+                  required
+                  placeholder="company-jira" /></label
+              ><label>Name<input id="source-name" required /></label
+              ><label
+                >Kind<select id="source-kind">
+                  <option value="jira">Jira</option>
+                  <option value="bitbucket">Bitbucket</option>
+                </select></label
+              ><label
+                >Application base URL<input
+                  type="url"
+                  id="source-url"
+                  required
+                  placeholder="https://jira.example.com" /></label
+              ><label
+                >Transport<select id="transport">
+                  <option value="http">MCP · Streamable HTTP</option>
+                  <option value="stdio">MCP · Local command</option>
+                  <option value="rest">Read-only REST</option>
+                </select></label
+              ><label
+                >Credential environment variable<input
+                  id="credential"
+                  placeholder="JIRA_TOKEN" /></label
+              ><label
+                >MCP endpoint<input
+                  id="mcp-url"
+                  placeholder="https://mcp.example.com/mcp" /></label
+              ><label
+                >Local command<input id="command" placeholder="node" /></label
+              ><label
+                >Arguments (JSON array)<input id="args" value="[]" /></label
+              ><label
+                >Project keys<input
+                  id="source-projects"
+                  placeholder="PAY, WEB" /></label
+              ><label
+                >Repositories<input
+                  id="source-repos"
+                  placeholder="PLATFORM/payments-api" /></label
+              ><label
+                >Corporate CA path environment variable<input
+                  id="ca"
+                  placeholder="COMPANY_CA_PATH" /></label
+              ><label
+                >Verified AI integration identities<input
+                  id="ai-reviewers"
+                  placeholder="review-bot" /></label
+              ><label
+                >Jira Epic Link field<input
+                  id="epic-field"
+                  value="customfield_10014" /></label
+              ><label
+                >Server version (optional)<input id="source-version"
+              /></label>
+            </div>
+            <label class="ap-check"
+              ><input id="fallback" type="checkbox" />Allow read-only REST
+              fallback for missing MCP operations</label
+            >
+            <div class="ap-sep"></div>
+            <label
+              >Read-only operation mappings (JSON)<textarea
+                id="mappings"
+                spellcheck="false"
+              >
+{}</textarea>
+            </label>
+            <p class="ap-small">
+              Map “issues” or “pullRequests” to a verified read-only tool.
+              Normalized pages are documented in the README. Secrets must not
+              appear in command arguments or mappings.
+            </p>
+            <div class="ap-row">
+              <button class="ap-primary" type="submit">Save locally</button
+              ><button id="test-source" type="button">
+                Save & test connection</button
+              ><button id="import-source" type="button">
+                Import selected connection
+              </button>
+            </div>
+            <pre id="connection-result" aria-live="polite"></pre>
+          </form>
+          <h3>Import jobs</h3>
+          <div id="jobs"></div>
+        </section>
+        <section id="settings" hidden>
+          <h2>Reporting settings</h2>
+          <p class="ap-status">
+            Workflow states, timezone, fiscal calendar, adoption dates,
+            follow-up windows, and classification. Values are local and
+            versioned.
+          </p>
+          <form id="settings-form" class="ap-panel">
+            <label
+              >Reporting configuration (JSON)<textarea
+                id="settings-json"
+                rows="24"
+                spellcheck="false"
+              ></textarea></label
+            ><button class="ap-primary">Save reporting settings</button>
+          </form>
+        </section>
+        <section id="evidence" class="ap-panel" hidden>
+          <div class="ap-heading">
+            <h3 id="evidence-title">Evidence</h3>
+            <button id="close-evidence">Close</button>
+          </div>
+          <div id="evidence-content" class="ap-table-wrap"></div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

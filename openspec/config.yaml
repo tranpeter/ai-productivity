@@ -1,0 +1,14 @@
+schema: spec-driven
+
+context: |
+  Standalone local single-user ai-productivity application.
+  Backend: Node.js and TypeScript. Persistence: SQLite.
+  Lightweight browser UI with shared typed API contracts.
+  Sources: on-premise Jira and Bitbucket through MCP, with read-only REST fallback.
+  Core scope: historical imports, configurable timelines, quarter comparisons,
+  reproducible delivery metrics, evidence drilldowns, and CSV/print reports.
+  Source systems are read-only. Keep credentials out of source control and exports.
+  All application code, tests, and planning artifacts belong to this project.
+  Planned verification: pnpm run typecheck, pnpm run build, and pnpm test.
+githubCopilot:
+  cloudAgent: false
