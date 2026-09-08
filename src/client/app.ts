@@ -24,9 +24,22 @@ const esc = (v: unknown) =>
 let csrf = "",
   config: Config,
   report: Report | undefined;
+let recommendedTool: string | null = null;
 function notice(text: string, error = false) {
   $("#notice").textContent = text;
   $("#notice").classList.toggle("ap-error", error);
+  flash($("#notice"));
+}
+// Restarts the highlight animation so repeated clicks are visible.
+function flash(el: HTMLElement) {
+  el.classList.remove("ap-flash");
+  void el.offsetWidth;
+  el.classList.add("ap-flash");
+}
+function fillList(id: string, values: Iterable<string>) {
+  $("#" + id).innerHTML = Array.from(values)
+    .map((v) => `<option value="${esc(v)}"></option>`)
+    .join("");
 }
 async function api(path: string, body?: unknown, method?: string) {
   const r = await fetch("/api/v1" + path, {
@@ -315,6 +328,8 @@ async function init() {
     void (async () => {
       show(await api("/comparisons", readAnalysis()));
       await reports();
+      $("#results").scrollIntoView({ behavior: "smooth", block: "start" });
+      flash($("#results"));
       notice("Report calculated and saved with frozen evidence.");
     })().catch((e) => notice(e.message, true));
   };
@@ -326,18 +341,47 @@ async function init() {
     await saveSource();
     $("#connection-result").textContent = "Testing…";
     try {
-      $("#connection-result").textContent = JSON.stringify(
-        await api(
-          "/connections/" + encodeURIComponent(value("source-id")) + "/test",
-          {},
-        ),
-        null,
-        2,
+      const result = await api(
+        "/connections/" + encodeURIComponent(value("source-id")) + "/test",
+        {},
       );
+      const guide =
+        Array.isArray(result.guidance) && result.guidance.length
+          ? "Import guidance ([+] recommended, [-] do not import):\n" +
+            result.guidance.join("\n") +
+            "\n\n"
+          : "";
+      $("#connection-result").textContent =
+        guide + JSON.stringify(result, null, 2);
+      recommendedTool = result.recommendedTool ?? null;
+      $("#apply-recommendation").hidden = !recommendedTool;
     } catch (e) {
       $("#connection-result").textContent = (e as Error).message;
+      recommendedTool = null;
+      $("#apply-recommendation").hidden = true;
     }
   });
+  $("#apply-recommendation").onclick = () => {
+    if (!recommendedTool) return;
+    const op = value("source-kind") === "jira" ? "issues" : "pullRequests";
+    let mappings: Record<string, unknown> = {};
+    try {
+      mappings = JSON.parse(value("mappings") || "{}");
+    } catch {
+      mappings = {};
+    }
+    mappings[op] = {
+      tool: recommendedTool,
+      arguments: {},
+      verifiedReadOnly: true,
+    };
+    input("mappings").value = JSON.stringify(mappings, null, 2);
+    input("mappings").focus();
+    flash(input("mappings"));
+    notice(
+      `Applied recommended tool "${recommendedTool}" to ${op}. Review, then Save & test.`,
+    );
+  };
   $("#import-source").onclick = safe(async () => {
     await saveSource();
     await api("/imports", {
@@ -345,7 +389,38 @@ async function init() {
       mode: "backfill",
     });
     await jobs();
-    notice("Import started.");
+    $("#jobs").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    flash($("#jobs"));
+    notice("Import started. See the Import jobs list below.");
+  });
+  $("#load-catalog").onclick = safe(async () => {
+    const ids = Array.from(
+      $<HTMLSelectElement>("#sources").selectedOptions,
+    ).map((o) => o.value);
+    if (!ids.length) {
+      notice("Select one or more sources first.", true);
+      return;
+    }
+    notice("Loading projects and repositories…");
+    const projects = new Set<string>();
+    const repos = new Set<string>();
+    const projectQuery = encodeURIComponent(value("projects"));
+    for (const id of ids) {
+      const path = "/connections/" + encodeURIComponent(id) + "/catalog";
+      (await api(path + "?type=projects")).items.forEach((x: string) =>
+        projects.add(x),
+      );
+      (
+        await api(path + "?type=repositories&projects=" + projectQuery)
+      ).items.forEach((x: string) => repos.add(x));
+    }
+    fillList("projects-list", projects);
+    fillList("repos-list", repos);
+    flash(input("projects"));
+    flash(input("repos"));
+    notice(
+      `Loaded ${projects.size} projects, ${repos.size} repositories. Repositories come from the project keys in the field above.`,
+    );
   });
   $("#new-source").onclick = () => edit();
   input("mcp-file").onchange = () => {

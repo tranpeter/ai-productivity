@@ -47,12 +47,20 @@
               ><label
                 >Jira projects (comma separated)<input
                   id="projects"
-                  placeholder="All projects from selected sources" /></label
+                  list="projects-list"
+                  placeholder="All projects from selected sources" />
+                <datalist id="projects-list"></datalist></label
               ><label
                 >Repositories (comma separated)<input
                   id="repos"
-                  placeholder="PROJECT/repository"
-              /></label>
+                  list="repos-list"
+                  placeholder="PROJECT/repository" />
+                <datalist id="repos-list"></datalist></label>
+            </div>
+            <div class="ap-row">
+              <button id="load-catalog" type="button">
+                Load projects &amp; repositories
+              </button>
             </div>
             <div class="ap-sep"></div>
             <div class="ap-fields">
@@ -125,6 +133,8 @@
           <div class="ap-row">
             <a href="/api/v1/mcp-template" class="ap-link"
               >Download MCP template</a
+            ><a href="/api/v1/mcp-export" class="ap-link" download="mcp.local.json"
+              >Export my MCP configuration</a
             ><button id="new-source">New connection</button
             ><label
               >Import populated MCP template<input
@@ -217,8 +227,10 @@
               <button class="ap-primary" type="submit">Save locally</button
               ><button id="test-source" type="button">
                 Save & test connection</button
+              ><button id="apply-recommendation" type="button" hidden>
+                Apply recommended</button
               ><button id="import-source" type="button">
-                Import selected connection
+                Start import
               </button>
             </div>
             <pre id="connection-result" aria-live="polite"></pre>

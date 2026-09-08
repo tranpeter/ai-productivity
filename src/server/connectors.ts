@@ -192,6 +192,169 @@ async function mcp(source: Source, signal?: AbortSignal) {
     throw error;
   }
 }
+// Splits snake_case and camelCase tool names into lowercase word tokens so
+// classification works for both jira_get_issue and bitbucket_getPullRequests.
+function words(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map((w) => w.toLowerCase());
+}
+// Verbs whose presence marks a tool as mutating. Matched by stem (startsWith)
+// so plurals/inflections like "comments"/"created" are caught; this is
+// intentionally safe-biased since a false positive only demotes to do-not-import.
+const MUTATION_VERBS = [
+  "create", "update", "delete", "remove", "add", "set", "edit", "assign",
+  "transition", "link", "unlink", "move", "archive", "restore", "download",
+  "post", "put", "patch", "merge", "decline", "approve", "submit", "vote",
+  "comment", "worklog",
+];
+function isMutation(name: string): boolean {
+  return words(name).some((w) => MUTATION_VERBS.some((v) => w.startsWith(v)));
+}
+function isEntity(name: string, kind: Source["kind"]): boolean {
+  const jira = /^(issues?|jql|search|changelogs?)$/;
+  const bb = /^(pull|pullrequests?|prs?|commits?|activit(y|ies)|diffs?)$/;
+  return words(name).some((w) => (kind === "jira" ? jira : bb).test(w));
+}
+// Best-effort hint only: a tool is recommended when it is read-only and concerns
+// the operation entity. Mutations and unrelated reads are marked do-not-import.
+// The caller must still verify read-only behavior and normalized-page output.
+function importGuidance(names: string[], kind: Source["kind"]): string[] {
+  return names
+    .map((name) => ({
+      name,
+      recommended: !isMutation(name) && isEntity(name, kind),
+    }))
+    .sort(
+      (a, b) =>
+        Number(b.recommended) - Number(a.recommended) ||
+        a.name.localeCompare(b.name),
+    )
+    .map((t) => `${t.recommended ? "[+]" : "[-]"} ${t.name}`);
+}
+// Ranks read-only tools to pick a single default mapping target for the
+// operation. Returns null when nothing looks like a suitable reader.
+function recommendedTool(names: string[], kind: Source["kind"]): string | null {
+  const score = (name: string): number => {
+    if (isMutation(name)) return -1;
+    const w = words(name);
+    const has = (x: string) => w.includes(x);
+    if (kind === "jira") {
+      if (has("search") && !has("fields")) return 100;
+      if (
+        (has("project") || has("board") || has("sprint")) &&
+        (has("issue") || has("issues"))
+      )
+        return 80;
+      if (has("issue") || has("issues")) return 30;
+      if (has("changelog") || has("changelogs")) return 20;
+      return -1;
+    }
+    const pr =
+      has("pull") || has("pullrequest") || has("pullrequests") || has("pr") || has("prs");
+    if (has("search")) return 100;
+    if (
+      pr &&
+      (has("requests") || has("pullrequests") || has("prs")) &&
+      !has("dashboard") &&
+      !has("inbox") &&
+      !has("changes") &&
+      !has("diff")
+    )
+      return 90;
+    if (pr && (has("get") || has("list"))) return 80;
+    if (pr) return 60;
+    if (has("commit") || has("commits") || has("activity") || has("diff"))
+      return 20;
+    return -1;
+  };
+  let best: string | null = null;
+  let bestScore = 0;
+  for (const name of names) {
+    const s = score(name);
+    if (s > bestScore) {
+      bestScore = s;
+      best = name;
+    }
+  }
+  return best;
+}
+// Fetches all pages of a Bitbucket list tool (start/limit + isLastPage paging).
+async function bitbucketPages(
+  call: (name: string, args: Record<string, unknown>) => Promise<any>,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<any[]> {
+  const out: any[] = [];
+  let start = 0;
+  for (let i = 0; i < 100; i++) {
+    const o = await call(name, { ...args, start, limit: 100 });
+    const d = o?.data ?? o ?? {};
+    const values = Array.isArray(d.values) ? d.values : [];
+    out.push(...values);
+    if (d.isLastPage !== false || !values.length) break;
+    start = typeof d.nextPageStart === "number" ? d.nextPageStart : start + values.length;
+  }
+  return out;
+}
+// Lists project keys or repository slugs from a connection's MCP server so the
+// UI can offer them as suggestions. Read-only; opens and closes its own client.
+export async function browseCatalog(
+  s: Source,
+  type: "projects" | "repositories",
+  signal: AbortSignal,
+  projectKeys?: string[],
+): Promise<string[]> {
+  if (s.transport === "rest")
+    throw new SourceError("MCP", "Catalog browsing requires an MCP transport");
+  const client = await mcp(s, signal);
+  const call = async (name: string, args: Record<string, unknown>) => {
+    const res: any = await client.callTool({ name, arguments: args }, undefined, {
+      signal,
+      timeout: 20000,
+    });
+    if (res.isError) {
+      const msg = (res.content ?? []).map((c: any) => c.text).join(" ");
+      throw new SourceError("MCP", `Tool ${name} failed: ${msg}`.slice(0, 300));
+    }
+    const text = (res.content ?? []).find(
+      (c: any) => typeof c.text === "string",
+    )?.text;
+    return text ? JSON.parse(text) : res.structuredContent;
+  };
+  const uniq = (a: string[]) =>
+    Array.from(new Set(a.filter(Boolean))).sort((x, y) => x.localeCompare(y));
+  try {
+    if (s.kind === "jira") {
+      if (type === "repositories") return [];
+      const arr = await call("jira_get_all_projects", {});
+      return uniq((Array.isArray(arr) ? arr : []).map((p: any) => String(p.key ?? "")));
+    }
+    if (type === "projects") {
+      const values = await bitbucketPages(call, "bitbucket_getProjects", {});
+      return uniq(values.map((v: any) => String(v.key ?? "")));
+    }
+    const keys = (projectKeys?.length ? projectKeys : s.projects).filter(
+      (k) => k && k !== "PROJECT",
+    );
+    const repos: string[] = [];
+    for (const key of keys) {
+      try {
+        const values = await bitbucketPages(call, "bitbucket_getRepositories", {
+          projectKey: key,
+        });
+        for (const v of values) if (v?.slug) repos.push(`${key}/${v.slug}`);
+      } catch {
+        // Skip project keys that don't exist or aren't accessible.
+      }
+    }
+    return uniq(repos);
+  } finally {
+    await client.close();
+  }
+}
 export async function testConnection(s: Source, signal: AbortSignal) {
   if (s.transport !== "rest") {
     let client: Client | undefined;
@@ -219,6 +382,14 @@ export async function testConnection(s: Source, signal: AbortSignal) {
           name: t.name,
           inputSchema: t.inputSchema,
         })),
+        guidance: importGuidance(
+          available.map((t) => t.name),
+          s.kind,
+        ),
+        recommendedTool: recommendedTool(
+          available.map((t) => t.name),
+          s.kind,
+        ),
         gaps: !mapping
           ? [
               "Map the read-only " +

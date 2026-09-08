@@ -298,6 +298,19 @@ body {
 #ap-mock .ap-error {
   color: #b42318;
 }
+#ap-mock .ap-flash {
+  animation: ap-flash 1.3s ease-out;
+}
+@keyframes ap-flash {
+  0% {
+    background-color: #fde68a;
+    box-shadow: 0 0 0 2px #f59e0b;
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}
 #ap-mock .ap-table-wrap {
   overflow: auto;
 }

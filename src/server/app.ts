@@ -9,7 +9,7 @@ import {
 } from "../shared/contracts.js";
 import { Store } from "./store.js";
 import { Imports } from "./imports.js";
-import { testConnection, SourceError } from "./connectors.js";
+import { testConnection, browseCatalog, SourceError } from "./connectors.js";
 import { analyze } from "./analysis.js";
 import { resolvePeriods } from "./periods.js";
 import { demo } from "./demo.js";
@@ -74,7 +74,7 @@ export const template = {
     },
   ],
   instructions:
-    "Template only. Supply actual credentials through environment variables. Do not add secret values. Save edited configuration as mcp.local.json (ignored) or through the app into .data. MCP tools must return normalized pages; see README.",
+    "Template only. Supply actual credentials through environment variables. Do not add secret values. Save edited configuration as mcp.local.json (ignored) or through the app into .data. Each operation maps to exactly ONE read-only MCP tool: set mappings.issues.tool (Jira) and mappings.pullRequests.tool (Bitbucket) to a single tool name, not a list. The app calls that one tool repeatedly, paging by cursor. MCP tools must return normalized pages; see README.",
 };
 export function createApp(store: Store) {
   const app = express(),
@@ -144,6 +144,15 @@ export function createApp(store: Store) {
   app.get("/api/v1/mcp-template", (_req, res) =>
     res.attachment("mcp.template.json").json(template),
   );
+  app.get("/api/v1/mcp-export", (_req, res) =>
+    // Downloads the live edited config. Filename matches the .gitignore
+    // patterns (mcp*.json / *.local.json); credentials remain env-var names.
+    res.attachment("mcp.local.json").json({
+      sources: store.config().sources,
+      instructions:
+        "Exported local configuration. Credentials are environment-variable names only; no secret values are included. Each operation maps to exactly ONE read-only MCP tool: mappings.issues.tool (Jira) and mappings.pullRequests.tool (Bitbucket) each name a single tool, not a list. The app calls that one tool repeatedly, paging by cursor, and it must return normalized pages; see README. Keep this file local; it matches .gitignore (mcp*.json / *.local.json).",
+    }),
+  );
   app.post("/api/v1/connections/:id/test", async (req, res) => {
     const s = store.config().sources.find((s) => s.id === req.params.id);
     if (!s) {
@@ -151,6 +160,35 @@ export function createApp(store: Store) {
       return;
     }
     res.json(await testConnection(s, AbortSignal.timeout(30000)));
+  });
+  app.get("/api/v1/connections/:id/catalog", async (req, res) => {
+    const s = store.config().sources.find((s) => s.id === req.params.id);
+    if (!s) {
+      res.sendStatus(404);
+      return;
+    }
+    const type = req.query.type === "repositories" ? "repositories" : "projects";
+    const projectKeys =
+      typeof req.query.projects === "string"
+        ? req.query.projects.split(",").map((x) => x.trim()).filter(Boolean)
+        : undefined;
+    try {
+      res.json({
+        items: await browseCatalog(
+          s,
+          type,
+          AbortSignal.timeout(30000),
+          projectKeys,
+        ),
+      });
+    } catch (e) {
+      res.status(502).json({
+        error: {
+          code: e instanceof SourceError ? e.code : "CATALOG",
+          message: e instanceof Error ? e.message : "Catalog lookup failed",
+        },
+      });
+    }
   });
   app.get("/api/v1/data", (_req, res) => {
     const records = store.records();
